@@ -37,6 +37,12 @@ static int cmd_q(char *args) {
 }
 
 static int cmd_help(char *args);
+static int cmd_si(char *args);
+static int cmd_info(char *args);
+static int cmd_x(char *args);
+static int cmd_p(char *args);
+static int cmd_w(char *args);
+static int cmd_d(char *args);
 
 static struct {
   char *name;
@@ -46,6 +52,12 @@ static struct {
   { "help", "Display informations about all supported commands", cmd_help },
   { "c", "Continue the execution of the program", cmd_c },
   { "q", "Exit NEMU", cmd_q },
+  { "si", "Execute N instructions, default 1", cmd_si },
+  { "info", "Print program status", cmd_info },
+  { "x", "Scan memory: x N EXPR", cmd_x },
+  { "p", "Evaluate expression", cmd_p },
+  { "w", "Set a watchpoint", cmd_w },
+  { "d", "Delete a watchpoint", cmd_d },
 
   /* TODO: Add more commands */
 
@@ -73,6 +85,142 @@ static int cmd_help(char *args) {
     }
     printf("Unknown command '%s'\n", arg);
   }
+  return 0;
+}
+
+static int cmd_si(char *args) {
+  uint64_t n = 1;
+
+  if (args != NULL) {
+    char *endptr = NULL;
+    n = strtoull(args, &endptr, 10);
+    if (endptr == args) {
+      printf("Usage: si [N]\n");
+      return 0;
+    }
+  }
+
+  cpu_exec(n);
+  return 0;
+}
+
+static int cmd_info(char *args) {
+  int i = 0;
+  char *subcmd = NULL;
+
+  if (args == NULL) {
+    printf("Usage: info r|w\n");
+    return 0;
+  }
+
+  subcmd = strtok(args, " ");
+  if (subcmd == NULL) {
+    printf("Usage: info r|w\n");
+    return 0;
+  }
+
+  if (strcmp(subcmd, "r") == 0) {
+    for (i = 0; i < 8; i ++) {
+      printf("%s\t0x%08x\n", regsl[i], reg_l(i));
+    }
+    printf("eip\t0x%08x\n", cpu.eip);
+    return 0;
+  }
+
+  if (strcmp(subcmd, "w") == 0) {
+    print_watchpoints();
+    return 0;
+  }
+
+  printf("Unknown info subcommand '%s'\n", subcmd);
+  return 0;
+}
+
+static int cmd_x(char *args) {
+  int i = 0;
+  int n = 0;
+  char *expr_str = NULL;
+  bool success = true;
+  uint32_t addr = 0;
+  char *endptr = NULL;
+
+  if (args == NULL) {
+    printf("Usage: x N EXPR\n");
+    return 0;
+  }
+
+  n = strtoul(args, &endptr, 10);
+  if (endptr == args) {
+    printf("Usage: x N EXPR\n");
+    return 0;
+  }
+
+  expr_str = endptr;
+  while (*expr_str == ' ' || *expr_str == '\t') {
+    expr_str ++;
+  }
+  if (*expr_str == '\0') {
+    printf("Usage: x N EXPR\n");
+    return 0;
+  }
+
+  if (n <= 0) {
+    printf("N should be a positive integer\n");
+    return 0;
+  }
+
+  addr = expr(expr_str, &success);
+  if (!success) {
+    printf("Bad expression: %s\n", expr_str);
+    return 0;
+  }
+
+  for (i = 0; i < n; i ++) {
+    printf("0x%08x: 0x%08x\n", addr + i * 4, vaddr_read(addr + i * 4, 4));
+  }
+
+  return 0;
+}
+
+static int cmd_p(char *args) {
+  bool success = true;
+  uint32_t value = 0;
+
+  if (args == NULL) {
+    printf("Usage: p EXPR\n");
+    return 0;
+  }
+
+  value = expr(args, &success);
+  if (!success) {
+    printf("Bad expression: %s\n", args);
+    return 0;
+  }
+
+  printf("0x%08x (%u)\n", value, value);
+  return 0;
+}
+
+static int cmd_w(char *args) {
+  if (args == NULL) {
+    printf("Usage: w EXPR\n");
+    return 0;
+  }
+
+  new_wp(args);
+  return 0;
+}
+
+static int cmd_d(char *args) {
+  int no = 0;
+
+  if (args == NULL) {
+    printf("Usage: d N\n");
+    return 0;
+  }
+
+  no = atoi(args);
+  free_wp(no);
   return 0;
 }
 
